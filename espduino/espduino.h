@@ -14,6 +14,12 @@
 #include "ringbuf.h"
 
 #define ESP_TIMEOUT 2000
+
+#define SLIP_START 0x7E
+#define SLIP_END  0x7F
+#define SLIP_REPL 0x7D
+#define SLIP_ESC(x) (x ^ 0x20)
+
 typedef enum
 {
   CMD_NULL = 0,
@@ -94,7 +100,7 @@ public:
   uint16_t return_cmd;
   boolean is_return;
 
-  void wifiConnect(String ssid, String password);
+  void wifiConnect(const char* ssid, const char* password);
   void process();
   uint16_t request(uint16_t cmd, uint32_t callback, uint32_t _return, uint16_t argc);
   uint16_t request(uint16_t crc_in, uint8_t* data, uint16_t len);
@@ -105,17 +111,20 @@ public:
   void disable();
   boolean waitReturn(uint32_t timeout);
   boolean waitReturn();
+
 private:
   Stream *_serial;
   
   boolean _debugEn;
   PROTO _proto;
-  uint8_t _protoBuf[1024];
+  uint8_t _protoBuf[512];
   int _chip_pd;
   
 
   void init();
   void INFO(String info);
   void protoCompletedCb(void);
+  void write(uint8_t data);
+  void write(uint8_t* data, uint16_t len);
 };
 #endif

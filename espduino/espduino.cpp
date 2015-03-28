@@ -83,7 +83,7 @@ void ESP::protoCompletedCb(void)
   }
   resp_crc =  *(uint16_t*)data_ptr;
   if(crc != resp_crc) {
-    _debug->println("ARDUINO: Invalid CRC");
+      INFO("ARDUINO: Invalid CRC");
     return;
   }
 
@@ -106,57 +106,74 @@ void ESP::protoCompletedCb(void)
   }
 }
 
-void ESP::wifiConnect(String ssid, String password)
+void ESP::wifiConnect(const char* ssid, const char* password)
 {
   uint16_t crc;
   crc = request(CMD_WIFI_CONNECT, (uint32_t)&wifiCb, 0, 2);
-  crc = request(crc,(uint8_t*)ssid.c_str(), ssid.length());
-  crc = request(crc,(uint8_t*)password.c_str(), password.length());
+  crc = request(crc,(uint8_t*)ssid, strlen(ssid));
+  crc = request(crc,(uint8_t*)password, strlen(password));
   request(crc);
 }
-
+void ESP::write(uint8_t data)
+{
+  switch(data){
+  case SLIP_START:
+  case SLIP_END:
+  case SLIP_REPL:
+    _serial->write(SLIP_REPL);
+    _serial->write(SLIP_ESC(data));
+    break;
+  default:
+    _serial->write(data);
+  }
+}
+void ESP::write(uint8_t* data, uint16_t len)
+{
+  while(len --)
+    write(*data ++);
+}
 uint16_t ESP::request(uint16_t cmd, uint32_t callback, uint32_t _return, uint16_t argc)
 {
   uint16_t crc = 0;
   _serial->write(0x7E);
-  _serial->write((uint8_t*)&cmd, 2);
+  write((uint8_t*)&cmd, 2);
   crc = crc16_data((uint8_t*)&cmd, 2, crc);
 
-  _serial->write((uint8_t*)&callback, 4);
+  write((uint8_t*)&callback, 4);
   crc = crc16_data((uint8_t*)&callback, 4, crc);
 
-  _serial->write((uint8_t*)&_return, 4);
+  write((uint8_t*)&_return, 4);
   crc = crc16_data((uint8_t*)&_return, 4, crc);
 
-  _serial->write((uint8_t*)&argc, 2);
+  write((uint8_t*)&argc, 2);
   crc = crc16_data((uint8_t*)&argc, 2, crc);
   return crc;
 }
+
 uint16_t ESP::request(uint16_t crc_in, uint8_t* data, uint16_t len)
 {
   uint8_t temp = 0;
   uint16_t pad_len = len;
   while(pad_len % 4 != 0)
     pad_len++;
-
-  _serial->write((uint8_t*)&pad_len, 2);
+  write((uint8_t*)&pad_len, 2);
   crc_in = crc16_data((uint8_t*)&pad_len, 2, crc_in);
   while(len --){
-    _serial->write(*data);
+    write(*data);
     crc_in = crc16_data((uint8_t*)data, 1, crc_in);
     data ++;
     if(pad_len > 0) pad_len --;
   }
   
   while(pad_len --){
-    _serial->write(temp);
+    write(temp);
     crc_in = crc16_data((uint8_t*)&temp, 1, crc_in);
   }
   return crc_in;
 }
 uint16_t ESP::request(uint16_t crc)
 {
-  _serial->write((uint8_t*)&crc, 2);
+  write((uint8_t*)&crc, 2);
   _serial->write(0x7F);
 }
 
@@ -171,14 +188,14 @@ void ESP::init()
 }
 
 ESP::ESP(Stream *serial, int chip_pd):
-_serial(serial), _chip_pd(_chip_pd)
+_serial(serial), _chip_pd(chip_pd)
 {
   _debugEn = false;
   init();
 }
 
 ESP::ESP(Stream *serial, Stream* debug, int chip_pd):
-_serial(serial), _debug(debug), _chip_pd(_chip_pd)
+_serial(serial), _debug(debug), _chip_pd(chip_pd)
 {
     _debugEn = true;
     //_serial = _debug;
@@ -262,7 +279,9 @@ void ESP::process()
     
     default:
       if(_proto.isBegin == 0) {
-        _debug->write(value);
+        if(_debugEn) {
+            _debug->write(value);
+        }
         break;
       }
       if(_proto.isEsc){
